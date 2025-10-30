@@ -1,0 +1,5 @@
+/target
+.claude/*
+CLAUDE.md
+Cargo.lock
+in-memoria.db

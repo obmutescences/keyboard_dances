@@ -4,10 +4,12 @@
 
 ## Features
 
-- Listens to `seat0` keyboard events via libinput and works on Wayland or X11 compositors that rely on libinput.
-- Binds separate sounds to key press and key release events, supporting WAV and OGG/Vorbis formats.
-- Plays a short startup test for both sounds to confirm they loaded, then continues running as a daemon.
-- Emits lightweight logs during runtime (audio loading, device add/remove, key events).
+- Listens to keyboard events on Linux (Wayland compositor via libinput and wl_keyboard protocols)
+- Binds separate sounds to key press and key release events, supporting WAV and OGG/Vorbis formats
+- **Configurable volume control** - Adjust audio volume from 0.0 (silent) to any positive value
+- **Sample rate control** - Modify pitch and playback speed with sample rate multiplier
+- Plays a short startup test for both sounds to confirm they loaded, then continues running as a daemon
+- Emits lightweight logs during runtime (audio loading, device add/remove, key events)
 
 ## Quick Start
 
@@ -26,7 +28,17 @@
    - Second argument: sound to play on key release.
 4. Run with access to `/dev/input` (join the `input` group or run via `sudo`):
    ```bash
+   # Basic usage
    sudo cargo run --release -- ./ff-0.wav ./ff-1.wav
+
+   # With custom volume (0.0 = silent, 1.0 = normal, 2.0 = double volume)
+   sudo cargo run --release -- ./ff-0.wav ./ff-1.wav --volume 0.5
+
+   # With custom pitch/speed (1.0 = normal, 2.0 = double speed/high pitch, 0.5 = half speed/low pitch)
+   sudo cargo run --release -- ./ff-0.wav ./ff-1.wav --sample-rate 1.5
+
+   # Combined settings
+   sudo cargo run --release -- ./ff-0.wav ./ff-1.wav --volume 0.3 --sample-rate 0.8
    ```
 
 The program plays both sounds once during startup to verify loading, then enters the event loop. Use `Ctrl+C` to stop it.
@@ -40,17 +52,44 @@ cargo build
 # Release build (recommended)
 cargo build --release
 
-# Run
+# Run with default settings
 cargo run --release -- <PRESS_SOUND> <RELEASE_SOUND>
+
+# Run with volume control
+cargo run --release -- <PRESS_SOUND> <RELEASE_SOUND> --volume 0.5
+
+# Run with sample rate control
+cargo run --release -- <PRESS_SOUND> <RELEASE_SOUND> --sample-rate 1.5
+
+# Run with both volume and sample rate
+cargo run --release -- <PRESS_SOUND> <RELEASE_SOUND> --volume 0.3 --sample-rate 1.2
 ```
 
-The CLI validates that each argument points to an existing file. Provide absolute paths or paths relative to the current directory.
+The CLI validates that each sound file argument points to an existing file. Provide absolute paths or paths relative to the current directory.
+
+## Command-Line Options
+
+- `<PRESS_SOUND>` (required) - Path to the audio file to play on key press
+- `<RELEASE_SOUND>` (required) - Path to the audio file to play on key release
+- `-v, --volume <VOLUME>` (optional) - Volume level for audio playback
+  - `0.0` = silent
+  - `1.0` = normal volume (default)
+  - `2.0` = double volume
+  - Can be any positive float value
+- `-s, --sample-rate <SAMPLE_RATE>` (optional) - Sample rate multiplier for pitch/speed control
+  - `1.0` = normal pitch and speed (default)
+  - `2.0` = double speed and high pitch
+  - `0.5` = half speed and low pitch
+  - Can be any positive float value
+- `-h, --help` - Show help information
 
 ## Usage Notes
 
 - Supported formats: WAV (PCM) and OGG/Vorbis, decoded via `symphonia`.
 - When multiple keys are hit in quick succession the sounds overlap; rodio's `Sink` handles the mixing.
-- The listener targets `seat0` by default; there is currently no configuration for custom seats or device filtering.
+- Volume control affects all audio playback through rodio's sink volume setting.
+- Sample rate multiplier changes both pitch and playback speed - higher values create higher-pitched, faster audio.
+- The listener targets Wayland keyboard events by default through wl_keyboard protocol.
 - Logs report audio metadata, device add/remove events, and keyboard activity.
 
 ## Troubleshooting
@@ -64,14 +103,14 @@ The CLI validates that each argument points to an existing file. Provide absolut
 
 ```
 src/
-├── main.rs      # CLI parsing, audio loading, event loop bootstrap
-├── audio/       # Audio module (load + playback)
-│   └── mod.rs
-└── input/       # Input module (libinput listener)
-    └── mod.rs
+├── main.rs           # CLI parsing (clap), audio loading, event loop bootstrap
+├── audio/            # Audio module (load + playback with volume/sample-rate control)
+│   └── mod.rs        # AudioPlayer & AudioSource with volume & sample_rate_multiplier
+└── input/            # Input module (Wayland keyboard event handling)
+    └── mod.rs        # KeyboardHandler trait & listen() function
 ```
 
-Core dependencies: `rodio`, `symphonia`, `input` (libinput bindings), `clap`, `anyhow`.
+Core dependencies: `rodio` (audio playback), `symphonia` (audio decoding), `wayland-client` (Wayland protocols), `clap` (CLI parsing), `anyhow` (error handling).
 
 ## Known Limitations
 

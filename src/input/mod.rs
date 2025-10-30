@@ -108,7 +108,7 @@ pub fn listen<H: KeyboardHandler>(handler: H) -> Result<()> {
         }
 
         // Avoid busy loop if no events are available.
-        thread::sleep(Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(5));
     }
 }
 

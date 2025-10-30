@@ -18,6 +18,14 @@ struct Args {
     /// Path to the sound file for key release
     #[arg(value_name = "RELEASE_SOUND")]
     release_sound: PathBuf,
+
+    /// Volume level (0.0 = silent, 1.0 = normal, 2.0 = double volume)
+    #[arg(short, long, default_value = "1.0")]
+    volume: f32,
+
+    /// Sample rate multiplier for pitch/speed control (1.0 = normal, 2.0 = double speed/pitch, 0.5 = half speed/pitch)
+    #[arg(short, long, default_value = "1.0")]
+    sample_rate: f32,
 }
 
 struct KeyHandler {
@@ -63,8 +71,10 @@ fn main() -> anyhow::Result<()> {
     println!("Loading audio files...");
     println!("Press sound: {}", args.press_sound.display());
     println!("Release sound: {}", args.release_sound.display());
+    println!("Volume: {}", args.volume);
+    println!("Sample rate multiplier: {}", args.sample_rate);
 
-    let player = AudioPlayer::new(&args.press_sound, &args.release_sound)?;
+    let player = AudioPlayer::new(&args.press_sound, &args.release_sound, args.volume, args.sample_rate)?;
 
     // Test audio playback
     println!("Testing audio playback...");

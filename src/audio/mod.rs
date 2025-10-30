@@ -7,6 +7,9 @@ pub struct AudioPlayer {
     press_sound: Option<AudioSource>,
     release_sound: Option<AudioSource>,
     stream: OutputStream,
+    volume: f32,
+    #[allow(dead_code)]
+    sample_rate_multiplier: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -15,10 +18,11 @@ pub struct AudioSource {
     channels: u16,
     sample_rate: u32,
     pos: usize,
+    sample_rate_multiplier: f32,
 }
 
 impl AudioSource {
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub fn from_file<P: AsRef<Path>>(path: P, sample_rate_multiplier: f32) -> Result<Self> {
         use std::fs::File;
 
         let file = File::open(path)?;
@@ -55,7 +59,7 @@ impl AudioSource {
                 Err(symphonia::core::errors::Error::IoError(err))
                     if err.kind() == std::io::ErrorKind::UnexpectedEof =>
                 {
-                    break
+                    break;
                 }
                 Err(err) => return Err(anyhow::anyhow!("Error reading packet: {}", err)),
             };
@@ -117,6 +121,7 @@ impl AudioSource {
             channels,
             sample_rate,
             pos: 0,
+            sample_rate_multiplier,
         })
     }
 }
@@ -141,7 +146,7 @@ impl Source for AudioSource {
     }
 
     fn sample_rate(&self) -> u32 {
-        self.sample_rate
+        (self.sample_rate as f32 * self.sample_rate_multiplier) as u32
     }
 
     fn total_duration(&self) -> Option<Duration> {
@@ -150,7 +155,12 @@ impl Source for AudioSource {
 }
 
 impl AudioPlayer {
-    pub fn new<P: AsRef<Path>>(press_path: P, release_path: P) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(
+        press_path: P,
+        release_path: P,
+        volume: f32,
+        sample_rate_multiplier: f32,
+    ) -> Result<Self> {
         let mut stream = rodio::OutputStreamBuilder::open_default_stream()
             .map_err(|e| anyhow::anyhow!("Failed to initialize default audio output: {}", e))?;
         stream.log_on_drop(false);
@@ -159,7 +169,7 @@ impl AudioPlayer {
             "[Audio] Loading press sound from: {}",
             press_path.as_ref().display()
         );
-        let press_sound = match AudioSource::from_file(&press_path) {
+        let press_sound = match AudioSource::from_file(&press_path, sample_rate_multiplier) {
             Ok(sound) => {
                 println!(
                     "[Audio] Press sound loaded successfully: {} samples, {} channels, {} Hz",
@@ -179,7 +189,7 @@ impl AudioPlayer {
             "[Audio] Loading release sound from: {}",
             release_path.as_ref().display()
         );
-        let release_sound = match AudioSource::from_file(&release_path) {
+        let release_sound = match AudioSource::from_file(&release_path, sample_rate_multiplier) {
             Ok(sound) => {
                 println!(
                     "[Audio] Release sound loaded successfully: {} samples, {} channels, {} Hz",
@@ -199,6 +209,8 @@ impl AudioPlayer {
             press_sound,
             release_sound,
             stream,
+            volume,
+            sample_rate_multiplier,
         })
     }
 
@@ -208,6 +220,7 @@ impl AudioPlayer {
             // println!("[Audio] Playing press sound with {} samples", sound.samples.len());
             let sound_clone = sound.clone();
             let sink = Sink::connect_new(self.stream.mixer());
+            sink.set_volume(self.volume);
             // println!("[Audio] Audio sink created, playing sound...");
             sink.append(sound_clone);
             sink.detach();
@@ -222,6 +235,8 @@ impl AudioPlayer {
             // println!("[Audio] Playing release sound with {} samples", sound.samples.len());
             let sound_clone = sound.clone();
             let sink = Sink::connect_new(self.stream.mixer());
+            let end_volume = self.volume * 0.2;
+            sink.set_volume(end_volume);
             // println!("[Audio] Audio sink created, playing sound...");
             sink.append(sound_clone);
             sink.detach();

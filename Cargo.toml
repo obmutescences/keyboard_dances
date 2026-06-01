@@ -1,18 +1,3 @@
-[package]
-name = "keyboard_dances"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-rodio = "0.21"
-symphonia = { version = "0.5", default-features = false, features = ["ogg", "vorbis", "wav", "pcm"] }
-clap = { version = "4.0", features = ["derive"] }
-anyhow = "1.0"
-
-[target.'cfg(target_os = "linux")'.dependencies]
-# input crate provides libinput bindings with udev integration for Wayland
-input = "0.9"
-libc = "0.2"
-
-# X11 dependencies (disabled for Wayland)
-# x11 = "2.21"
+[workspace]
+members = ["src-tauri"]
+resolver = "3"

@@ -1,122 +1,210 @@
 # keyboard_dances
 
-`keyboard_dances` is a Rust background utility for Linux that plays custom audio when keys are pressed and released. It listens to keyboard events through libinput while the program keeps running in the background.
+`keyboard_dances` is a Linux desktop app for assigning sound effects to keyboard
+press and release events. The current version is built with Tauri 2 + Rust and
+provides an app window, a system tray icon, persistent config files, and sound
+profile switching.
 
-## Features
+Chinese documentation is available in [README_zh.md](README_zh.md).
 
-- Listens to keyboard events on Linux (Wayland compositor via libinput and wl_keyboard protocols)
-- Binds separate sounds to key press and key release events, supporting WAV and OGG/Vorbis formats
-- **Configurable volume control** - Adjust audio volume from 0.0 (silent) to any positive value
-- **Sample rate control** - Modify pitch and playback speed with sample rate multiplier
-- Plays a short startup test for both sounds to confirm they loaded, then continues running as a daemon
-- Emits lightweight logs during runtime (audio loading, device add/remove, key events)
+Current scope:
 
-## Quick Start
+- Configure one shared press sound and one shared release sound for all keys.
+- Select audio files, save settings, and test playback from the app UI.
+- Manage multiple profiles. Switching profiles switches the active press/release sounds.
+- Duplicate, rename, and delete profiles from the app UI.
+- Listen for keyboard events in the background and play the matching sound.
+- Target Linux / NixOS first, with AppImage as the initial packaging format.
 
-1. Install the Rust stable toolchain (2021 edition).
-2. Install system dependencies: `libinput`, `libudev`, `alsa-lib`, `libxkbcommon`, and `pkg-config`.
-   - Debian / Ubuntu:
-     ```bash
-     sudo apt install libinput-dev libudev-dev libasound2-dev libxkbcommon-dev pkg-config
-     ```
-   - Or use the bundled Nix development environment:
-     ```bash
-     nix-shell
-     ```
-3. Prepare two audio files (you can reuse the repository's `ff-0.wav` / `ff-1.wav`):
-   - First argument: sound to play on key press.
-   - Second argument: sound to play on key release.
-4. Run with access to `/dev/input` (join the `input` group or run via `sudo`):
-   ```bash
-   # Basic usage
-   sudo cargo run --release -- ./ff-0.wav ./ff-1.wav
+## Nix Development Environment
 
-   # With custom volume (0.0 = silent, 1.0 = normal, 2.0 = double volume)
-   sudo cargo run --release -- ./ff-0.wav ./ff-1.wav --volume 0.5
-
-   # With custom pitch/speed (1.0 = normal, 2.0 = double speed/high pitch, 0.5 = half speed/low pitch)
-   sudo cargo run --release -- ./ff-0.wav ./ff-1.wav --sample-rate 1.5
-
-   # Combined settings
-   sudo cargo run --release -- ./ff-0.wav ./ff-1.wav --volume 0.3 --sample-rate 0.8
-   ```
-
-The program plays both sounds once during startup to verify loading, then enters the event loop. Use `Ctrl+C` to stop it.
-
-## Build & Run
+From the repository root, enter the development environment with:
 
 ```bash
-# Debug build
-cargo build
-
-# Release build (recommended)
-cargo build --release
-
-# Run with default settings
-cargo run --release -- <PRESS_SOUND> <RELEASE_SOUND>
-
-# Run with volume control
-cargo run --release -- <PRESS_SOUND> <RELEASE_SOUND> --volume 0.5
-
-# Run with sample rate control
-cargo run --release -- <PRESS_SOUND> <RELEASE_SOUND> --sample-rate 1.5
-
-# Run with both volume and sample rate
-cargo run --release -- <PRESS_SOUND> <RELEASE_SOUND> --volume 0.3 --sample-rate 1.2
+cd /home/zerone/projects/keyboard_dances
+nix develop path:.
 ```
 
-The CLI validates that each sound file argument points to an existing file. Provide absolute paths or paths relative to the current directory.
+`path:.` is recommended when `flake.nix` is newly added locally but not yet
+tracked by Git. Plain `nix develop` can fail in that state because flakes read
+from the Git tree.
 
-## Command-Line Options
+If the flake files are already tracked, this also works:
 
-- `<PRESS_SOUND>` (required) - Path to the audio file to play on key press
-- `<RELEASE_SOUND>` (required) - Path to the audio file to play on key release
-- `-v, --volume <VOLUME>` (optional) - Volume level for audio playback
-  - `0.0` = silent
-  - `1.0` = normal volume (default)
-  - `2.0` = double volume
-  - Can be any positive float value
-- `-s, --sample-rate <SAMPLE_RATE>` (optional) - Sample rate multiplier for pitch/speed control
-  - `1.0` = normal pitch and speed (default)
-  - `2.0` = double speed and high pitch
-  - `0.5` = half speed and low pitch
-  - Can be any positive float value
-- `-h, --help` - Show help information
+```bash
+nix develop
+```
 
-## Usage Notes
+Compatibility entry point:
 
-- Supported formats: WAV (PCM) and OGG/Vorbis, decoded via `symphonia`.
-- When multiple keys are hit in quick succession the sounds overlap; rodio's `Sink` handles the mixing.
-- Volume control affects all audio playback through rodio's sink volume setting.
-- Sample rate multiplier changes both pitch and playback speed - higher values create higher-pitched, faster audio.
-- The listener targets Wayland keyboard events by default through wl_keyboard protocol.
-- Logs report audio metadata, device add/remove events, and keyboard activity.
+```bash
+nix-shell
+```
 
-## Troubleshooting
+The shell provides the runtime and build dependencies needed by Tauri,
+WebKitGTK, GTK, libinput, and ALSA. The frontend is static HTML/CSS/JS, so there
+is no `npm install` step and no separate frontend dev server.
 
-- **Missing system libraries**: If the build fails with `alsa` or `libudev` not found, install the appropriate development packages or build inside `nix-shell`.
-- **No key events**: Ensure your compositor uses libinput and that the process can read `/dev/input/event*`.
-- **Permission denied**: Join the `input` group, run via `sudo`, or relax access with a custom udev rule.
-- **No audio output**: Check system volume; test the audio files with `aplay path/to/file.wav`.
+For niri / Wayland sessions, the dev shell currently sets:
+
+```text
+WEBKIT_DISABLE_COMPOSITING_MODE=1
+WEBKIT_DISABLE_DMABUF_RENDERER=1
+GDK_BACKEND=x11
+```
+
+`GDK_BACKEND=x11` runs GTK / WebKitGTK through Xwayland. This avoids rendering
+issues seen on some NixOS + Wayland setups. If the app cannot open a display,
+check that your niri session has `xwayland-satellite` installed and enabled. If
+your niri session does not use Xwayland, you can temporarily run with
+`GDK_BACKEND=wayland cargo tauri dev`.
+
+## Development Run
+
+After entering the Nix shell, run from the repository root:
+
+```bash
+cargo tauri dev
+```
+
+There is no frontend build step. Tauri dev loads the static files from `ui/`
+through the `frontendDist` setting in `src-tauri/tauri.conf.json`.
+
+To run the Rust app directly:
+
+```bash
+cargo run --manifest-path src-tauri/Cargo.toml
+```
+
+For UI work, prefer `cargo tauri dev` so static asset paths match the final
+Tauri app more closely.
+
+## Manual Test Flow
+
+After the app starts, check the following:
+
+1. The main window opens and the UI renders correctly.
+2. The system tray icon appears and the tray menu works.
+3. Select a Press audio file and a Release audio file in the UI.
+4. Save the profile, then use the test buttons to confirm both sounds play.
+5. Create, duplicate, rename, delete, and switch profiles.
+6. Press and release real keyboard keys, then confirm the background listener
+   triggers the matching sounds.
+
+Config files are written to:
+
+```text
+~/.config/keyboard-dances/app.toml
+~/.config/keyboard-dances/profiles/*.toml
+```
+
+Default sample sounds are written to:
+
+```text
+~/.local/share/keyboard-dances/sounds/
+```
+
+## Linux Input And Wayland Permissions
+
+The app listens to keyboard events through Linux input devices under
+`/dev/input/event*`. This is independent of the visible desktop protocol:
+Wayland, X11, niri, or Xwayland do not automatically grant global keyboard event
+access. The UI can work and the test buttons can play sound while the background
+keyboard listener still fails because the user cannot read input devices.
+
+Quick checks:
+
+```bash
+groups
+ls -l /dev/input/event*
+test -r /dev/input/event0
+```
+
+Use the actual event device path from your system for the `test -r` command. If
+the read check fails, grant access through one of these approaches:
+
+- Add your user to the `input` group.
+- Add a narrower udev rule for the keyboard devices you want this app to read.
+
+On NixOS, the user group approach usually looks like this:
+
+```nix
+users.users.<your-user>.extraGroups = [ "input" ];
+```
+
+Then apply the system config and log out/in so the new group membership is
+visible to the desktop session:
+
+```bash
+sudo nixos-rebuild switch
+```
+
+The `input` group can read raw input events from devices, so treat it as a broad
+permission. Prefer a dedicated udev rule if you want to limit access more
+tightly.
+
+For niri / Wayland rendering, the dev shell uses `GDK_BACKEND=x11`, so the app
+window needs Xwayland support such as `xwayland-satellite`. That display setting
+only affects the Tauri/WebKit window; keyboard event listening still depends on
+`/dev/input/event*` permissions.
+
+## AppImage Packaging
+
+AppImage is the only packaging target currently prioritized. After manual app
+testing passes, enter the Nix shell and build with the NixOS wrapper:
+
+```bash
+cd /home/zerone/projects/keyboard_dances
+nix develop path:.
+scripts/build-appimage-nixos.sh
+```
+
+On NixOS, plain `cargo tauri build --bundles appimage` can fail at
+`failed to run linuxdeploy` because Tauri uses its cached linuxdeploy AppImage.
+The wrapper still uses Tauri to build the binary and prepare the AppDir, then
+finishes the AppImage with Nixpkgs `linuxdeploy`.
+
+The AppImage output is written under:
+
+```text
+target/release/bundle/appimage/
+```
+
+deb / rpm and other package formats can be added later after the AppImage flow is
+stable.
 
 ## Project Structure
 
-```
-src/
-├── main.rs           # CLI parsing (clap), audio loading, event loop bootstrap
-├── audio/            # Audio module (load + playback with volume/sample-rate control)
-│   └── mod.rs        # AudioPlayer & AudioSource with volume & sample_rate_multiplier
-└── input/            # Input module (Wayland keyboard event handling)
-    └── mod.rs        # KeyboardHandler trait & listen() function
+```text
+src-tauri/
+├── src/
+│   ├── main.rs      # Tauri entry point, commands, system tray
+│   ├── audio/       # Audio loading and playback
+│   ├── input/       # Linux input event listener
+│   ├── config.rs    # App config and profile persistence
+│   └── runtime.rs   # Background runtime state
+├── tauri.conf.json  # Tauri config and AppImage bundle config
+└── build.rs         # Generates the default icon at build time
+
+ui/
+├── index.html
+├── main.js
+└── styles.css
+
+nix/
+└── dev-shell.nix
 ```
 
-Core dependencies: `rodio` (audio playback), `symphonia` (audio decoding), `wayland-client` (Wayland protocols), `clap` (CLI parsing), `anyhow` (error handling).
+Core dependencies: Tauri 2, rodio, symphonia, input, directories, rfd, and toml.
 
 ## Known Limitations
 
-- Linux only (`cfg(target_os = "linux")`).
-- Requires a physical keyboard managed by libinput; virtual keyboards or remote input setups are untested.
-- No automated tests yet—verify behaviour in your target desktop environment.
+- Linux only for now.
+- All keys currently share one press sound and one release sound.
+- Per-key sound configuration is not implemented yet.
+- Real keyboard listening depends on `/dev/input/event*` permissions.
+- AppImage is the current priority packaging format. Other package formats are
+  deferred.
 
 ## License
 

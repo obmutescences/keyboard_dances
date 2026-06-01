@@ -1,4 +1,7 @@
 /target
+/src-tauri/target
+/src-tauri/gen
+/src-tauri/icons/icon.png
 .claude/*
 CLAUDE.md
 Cargo.lock

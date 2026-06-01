@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Keyboard Dances</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="profile-panel">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <div>
+            <h1>Keyboard Dances</h1>
+            <p id="config-dir"></p>
+          </div>
+        </div>
+
+        <div class="status-row">
+          <button id="toggle-enabled" class="toggle-button" type="button"></button>
+          <button id="next-profile" class="icon-button" type="button" title="Next profile">Next</button>
+        </div>
+
+        <nav id="profile-list" class="profile-list"></nav>
+      </aside>
+
+      <section class="editor-panel">
+        <header>
+          <div>
+            <p class="eyebrow">Active sound profile</p>
+            <h2 id="active-title">Loading</h2>
+          </div>
+          <div class="actions">
+            <button id="test-press" class="neon-action" type="button">Test Press</button>
+            <button id="test-release" class="neon-action" type="button">Test Release</button>
+            <button id="save-profile" class="primary" type="button">Save</button>
+          </div>
+        </header>
+
+        <div class="workspace-grid">
+          <form id="profile-form" class="profile-form">
+            <label>
+              <span>Profile name</span>
+              <input id="profile-name" name="name" autocomplete="off" />
+            </label>
+
+            <label>
+              <span>Press sound</span>
+              <div class="path-input">
+                <input id="press-sound" name="press_sound" autocomplete="off" />
+                <button data-pick="press-sound" type="button">Browse</button>
+              </div>
+            </label>
+
+            <label>
+              <span>Release sound</span>
+              <div class="path-input">
+                <input id="release-sound" name="release_sound" autocomplete="off" />
+                <button data-pick="release-sound" type="button">Browse</button>
+              </div>
+            </label>
+
+            <section class="wave-panel" aria-label="Audio waveform">
+              <div class="wave-meta">
+                <span>Audio Waveform</span>
+                <span>CSS Signal</span>
+              </div>
+              <div class="waveform" aria-hidden="true">
+                <span style="--h: 28%; --d: 0ms"></span>
+                <span style="--h: 62%; --d: 80ms"></span>
+                <span style="--h: 42%; --d: 160ms"></span>
+                <span style="--h: 78%; --d: 240ms"></span>
+                <span style="--h: 36%; --d: 320ms"></span>
+                <span style="--h: 88%; --d: 400ms"></span>
+                <span style="--h: 52%; --d: 480ms"></span>
+                <span style="--h: 70%; --d: 560ms"></span>
+                <span style="--h: 34%; --d: 640ms"></span>
+                <span style="--h: 82%; --d: 720ms"></span>
+                <span style="--h: 48%; --d: 800ms"></span>
+                <span style="--h: 74%; --d: 880ms"></span>
+                <span style="--h: 30%; --d: 960ms"></span>
+                <span style="--h: 58%; --d: 1040ms"></span>
+                <span style="--h: 40%; --d: 1120ms"></span>
+                <span style="--h: 76%; --d: 1200ms"></span>
+              </div>
+            </section>
+
+          </form>
+
+          <aside class="utility-panel">
+            <section class="create-panel">
+              <label>
+                <span>Duplicate as</span>
+                <div class="path-input">
+                  <input id="duplicate-name" autocomplete="off" placeholder="new-profile-name" />
+                  <button id="duplicate-profile" type="button">Create</button>
+                </div>
+              </label>
+            </section>
+
+            <section class="delete-panel">
+              <label>
+                <span>Profile control</span>
+                <button id="delete-profile" class="danger" type="button">Delete Profile</button>
+              </label>
+            </section>
+          </aside>
+        </div>
+
+        <p id="message" class="message"></p>
+      </section>
+    </main>
+
+    <div id="confirm-modal" class="modal-backdrop" hidden>
+      <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <div>
+          <p class="eyebrow">Confirm action</p>
+          <h2 id="confirm-title">Delete profile?</h2>
+        </div>
+        <p id="confirm-body" class="confirm-body"></p>
+        <div class="dialog-actions">
+          <button id="confirm-cancel" type="button">Cancel</button>
+          <button id="confirm-delete" class="danger" type="button">Delete</button>
+        </div>
+      </section>
+    </div>
+
+    <script src="/main.js"></script>
+  </body>
+</html>

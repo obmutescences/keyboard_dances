@@ -8,7 +8,7 @@ use crate::runtime::{AppRuntime, RuntimeSnapshot};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, WindowEvent};
 
 type CommandResult<T> = Result<T, String>;
 
@@ -89,6 +89,7 @@ fn main() -> anyhow::Result<()> {
         .setup(move |app| {
             runtime_for_setup.start_listener()?;
             setup_tray(app)?;
+            setup_main_window_close_behavior(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -106,6 +107,18 @@ fn main() -> anyhow::Result<()> {
         .run(tauri::generate_context!())?;
 
     Ok(())
+}
+
+fn setup_main_window_close_behavior(app: &tauri::App) {
+    if let Some(window) = app.get_webview_window("main") {
+        let window_to_hide = window.clone();
+        window.on_window_event(move |event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window_to_hide.hide();
+            }
+        });
+    }
 }
 
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {

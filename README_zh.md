@@ -1,5 +1,7 @@
 # keyboard_dances
 
+![keyboard_dances 预览](./v0.1.0.png)
+
 `keyboard_dances` 是一个 Linux 桌面应用，用来给键盘按下和释放事件配置不同音效。当前版本基于 Tauri 2 + Rust，提供应用窗口、system tray、配置文件和 profile 切换。
 
 当前功能范围：

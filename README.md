@@ -1,5 +1,7 @@
 # keyboard_dances
 
+![keyboard_dances preview](./v0.1.0.png)
+
 `keyboard_dances` is a Linux desktop app for assigning sound effects to keyboard
 press and release events. The current version is built with Tauri 2 + Rust and
 provides an app window, a system tray icon, persistent config files, and sound

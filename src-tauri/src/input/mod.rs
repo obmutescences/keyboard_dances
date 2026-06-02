@@ -68,29 +68,26 @@ pub fn listen<H: KeyboardHandler>(handler: H) -> Result<()> {
 
         for event in &mut libinput {
             match event {
-                Event::Keyboard(key_event) => match key_event {
-                    KeyboardEvent::Key(key) => {
-                        // let keycode = key.key();
-                        // let device_name = key.device().name().to_owned();
-                        match key.key_state() {
-                            KeyState::Pressed => {
-                                // println!(
-                                //     "[Input] ✓ Key PRESS detected from {} (keycode: {})",
-                                //     device_name, keycode
-                                // );
-                                handler.on_key_event(KeyEvent::Press);
-                            }
-                            KeyState::Released => {
-                                // println!(
-                                //     "[Input] ✓ Key RELEASE detected from {} (keycode: {})",
-                                //     device_name, keycode
-                                // );
-                                handler.on_key_event(KeyEvent::Release);
-                            }
+                Event::Keyboard(KeyboardEvent::Key(key)) => {
+                    // let keycode = key.key();
+                    // let device_name = key.device().name().to_owned();
+                    match key.key_state() {
+                        KeyState::Pressed => {
+                            // println!(
+                            //     "[Input] ✓ Key PRESS detected from {} (keycode: {})",
+                            //     device_name, keycode
+                            // );
+                            handler.on_key_event(KeyEvent::Press);
+                        }
+                        KeyState::Released => {
+                            // println!(
+                            //     "[Input] ✓ Key RELEASE detected from {} (keycode: {})",
+                            //     device_name, keycode
+                            // );
+                            handler.on_key_event(KeyEvent::Release);
                         }
                     }
-                    _ => {}
-                },
+                }
                 Event::Device(device_event) => {
                     let device_name = device_event.device().name().to_owned();
                     match device_event {

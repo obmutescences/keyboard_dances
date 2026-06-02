@@ -43,7 +43,9 @@ fn save_active_profile(
     runtime: tauri::State<'_, AppRuntime>,
     profile: ProfileConfig,
 ) -> CommandResult<RuntimeSnapshot> {
-    runtime.save_active_profile(profile).map_err(to_command_error)
+    runtime
+        .save_active_profile(profile)
+        .map_err(to_command_error)
 }
 
 #[tauri::command]
@@ -157,7 +159,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 ..
             } = event
             {
-                show_main_window(&tray.app_handle());
+                show_main_window(tray.app_handle());
             }
         })
         .build(app)?;

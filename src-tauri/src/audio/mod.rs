@@ -1,12 +1,18 @@
 use anyhow::Result;
-use rodio::{OutputStream, Sink, Source};
+use rodio::{ChannelCount, DeviceSinkBuilder, MixerDeviceSink, Player, SampleRate, Source};
 use std::{path::Path, time::Duration};
-use symphonia::core::audio::{AudioBuffer, Signal};
+use symphonia::core::{
+    codecs::audio::AudioDecoderOptions,
+    errors::Error as SymphoniaError,
+    formats::{FormatOptions, TrackType, probe::Hint},
+    io::MediaSourceStream,
+    meta::MetadataOptions,
+};
 
 pub struct AudioPlayer {
     press_sound: Option<AudioSource>,
     release_sound: Option<AudioSource>,
-    stream: OutputStream,
+    stream: MixerDeviceSink,
     volume: f32,
     #[allow(dead_code)]
     sample_rate_multiplier: f32,
@@ -25,29 +31,36 @@ impl AudioSource {
     pub fn from_file<P: AsRef<Path>>(path: P, sample_rate_multiplier: f32) -> Result<Self> {
         use std::fs::File;
 
+        let path = path.as_ref();
         let file = File::open(path)?;
 
-        // Use symphonia to decode the audio file
-        let media_source =
-            symphonia::core::io::MediaSourceStream::new(Box::new(file), Default::default());
-        let probe_result = symphonia::default::get_probe().format(
-            &Default::default(),
+        let media_source = MediaSourceStream::new(Box::new(file), Default::default());
+        let mut hint = Hint::new();
+        if let Some(extension) = path.extension().and_then(|extension| extension.to_str()) {
+            hint.with_extension(extension);
+        }
+
+        let probe_result = symphonia::default::get_probe().probe(
+            &hint,
             media_source,
-            &Default::default(),
-            &Default::default(),
+            FormatOptions::default(),
+            MetadataOptions::default(),
         )?;
 
-        let mut format_reader = probe_result.format;
+        let mut format_reader = probe_result;
 
         let track = format_reader
-            .tracks()
-            .iter()
-            .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
+            .default_track(TrackType::Audio)
             .ok_or_else(|| anyhow::anyhow!("No audio track found"))?;
 
         let track_id = track.id;
-        let mut decoder =
-            symphonia::default::get_codecs().make(&track.codec_params, &Default::default())?;
+        let codec_params = track
+            .codec_params
+            .as_ref()
+            .and_then(|params| params.audio())
+            .ok_or_else(|| anyhow::anyhow!("No audio codec parameters found"))?;
+        let mut decoder = symphonia::default::get_codecs()
+            .make_audio_decoder(codec_params, &AudioDecoderOptions::default())?;
 
         let mut samples = Vec::new();
         let mut channels = 0;
@@ -55,8 +68,9 @@ impl AudioSource {
 
         loop {
             let packet = match format_reader.next_packet() {
-                Ok(packet) => packet,
-                Err(symphonia::core::errors::Error::IoError(err))
+                Ok(Some(packet)) => packet,
+                Ok(None) => break,
+                Err(SymphoniaError::IoError(err))
                     if err.kind() == std::io::ErrorKind::UnexpectedEof =>
                 {
                     break;
@@ -64,51 +78,21 @@ impl AudioSource {
                 Err(err) => return Err(anyhow::anyhow!("Error reading packet: {}", err)),
             };
 
-            if packet.track_id() != track_id {
+            if packet.track_id != track_id {
                 continue;
             }
 
             match decoder.decode(&packet) {
                 Ok(audio_buf) => {
-                    let spec = *audio_buf.spec();
-                    channels = spec.channels.count() as u16;
-                    sample_rate = spec.rate;
+                    let spec = audio_buf.spec();
+                    channels = u16::try_from(spec.channels().count()).unwrap_or(u16::MAX);
+                    sample_rate = spec.rate();
 
-                    match audio_buf {
-                        symphonia::core::audio::AudioBufferRef::S16(buf) => {
-                            let frames = buf.frames();
-                            let ch_count = spec.channels.count();
-                            for frame in 0..frames {
-                                for ch in 0..ch_count {
-                                    let sample = buf.chan(ch)[frame];
-                                    samples.push(sample as f32 / i16::MAX as f32);
-                                }
-                            }
-                        }
-                        symphonia::core::audio::AudioBufferRef::F32(buf) => {
-                            let frames = buf.frames();
-                            let ch_count = spec.channels.count();
-                            for frame in 0..frames {
-                                for ch in 0..ch_count {
-                                    samples.push(buf.chan(ch)[frame]);
-                                }
-                            }
-                        }
-                        _ => {
-                            let mut f32_buf =
-                                AudioBuffer::<f32>::new(audio_buf.capacity() as u64, spec);
-                            audio_buf.convert(&mut f32_buf);
-                            let frames = f32_buf.frames();
-                            let ch_count = spec.channels.count();
-                            for frame in 0..frames {
-                                for ch in 0..ch_count {
-                                    samples.push(f32_buf.chan(ch)[frame]);
-                                }
-                            }
-                        }
-                    }
+                    let start = samples.len();
+                    samples.resize(start + audio_buf.samples_interleaved(), 0.0);
+                    audio_buf.copy_to_slice_interleaved(&mut samples[start..]);
                 }
-                Err(symphonia::core::errors::Error::DecodeError(_)) => {
+                Err(SymphoniaError::DecodeError(_)) => {
                     // Decode error, skip this packet
                     continue;
                 }
@@ -141,12 +125,13 @@ impl Source for AudioSource {
         None
     }
 
-    fn channels(&self) -> u16 {
-        self.channels
+    fn channels(&self) -> ChannelCount {
+        ChannelCount::new(self.channels.max(1)).expect("channel count is clamped to be non-zero")
     }
 
-    fn sample_rate(&self) -> u32 {
-        (self.sample_rate as f32 * self.sample_rate_multiplier) as u32
+    fn sample_rate(&self) -> SampleRate {
+        let sample_rate = (self.sample_rate as f32 * self.sample_rate_multiplier).max(1.0) as u32;
+        SampleRate::new(sample_rate).expect("sample rate is clamped to be non-zero")
     }
 
     fn total_duration(&self) -> Option<Duration> {
@@ -161,7 +146,7 @@ impl AudioPlayer {
         volume: f32,
         sample_rate_multiplier: f32,
     ) -> Result<Self> {
-        let mut stream = rodio::OutputStreamBuilder::open_default_stream()
+        let mut stream = DeviceSinkBuilder::open_default_sink()
             .map_err(|e| anyhow::anyhow!("Failed to initialize default audio output: {}", e))?;
         stream.log_on_drop(false);
 
@@ -219,11 +204,11 @@ impl AudioPlayer {
         if let Some(ref sound) = self.press_sound {
             // println!("[Audio] Playing press sound with {} samples", sound.samples.len());
             let sound_clone = sound.clone();
-            let sink = Sink::connect_new(self.stream.mixer());
-            sink.set_volume(self.volume);
+            let player = Player::connect_new(self.stream.mixer());
+            player.set_volume(self.volume);
             // println!("[Audio] Audio sink created, playing sound...");
-            sink.append(sound_clone);
-            sink.detach();
+            player.append(sound_clone);
+            player.detach();
         } else {
             println!("[Audio] No press sound loaded");
         }
@@ -234,12 +219,12 @@ impl AudioPlayer {
         if let Some(ref sound) = self.release_sound {
             // println!("[Audio] Playing release sound with {} samples", sound.samples.len());
             let sound_clone = sound.clone();
-            let sink = Sink::connect_new(self.stream.mixer());
+            let player = Player::connect_new(self.stream.mixer());
             let end_volume = self.volume * 0.2;
-            sink.set_volume(end_volume);
+            player.set_volume(end_volume);
             // println!("[Audio] Audio sink created, playing sound...");
-            sink.append(sound_clone);
-            sink.detach();
+            player.append(sound_clone);
+            player.detach();
         } else {
             println!("[Audio] No release sound loaded");
         }

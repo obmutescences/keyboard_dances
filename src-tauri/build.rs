@@ -23,12 +23,12 @@ fn ensure_png_icon() {
     let mut writer = encoder.write_header().expect("write png header");
 
     let mut rgba = Vec::with_capacity(128 * 128 * 4);
-    for y in 0..128 {
-        for x in 0..128 {
+    for y in 0_i32..128 {
+        for x in 0_i32..128 {
             let border = x == 18 || x == 109 || y == 32 || y == 95;
             let key_body = (19..=108).contains(&x) && (33..=94).contains(&y);
-            let dot = ((x as i32 - 50).pow(2) + (y as i32 - 64).pow(2)) < 120
-                || ((x as i32 - 78).pow(2) + (y as i32 - 64).pow(2)) < 120;
+            let dot = ((x - 50).pow(2) + (y - 64).pow(2)) < 120
+                || ((x - 78).pow(2) + (y - 64).pow(2)) < 120;
             let pixel = if border {
                 [29, 45, 54, 255]
             } else if dot {

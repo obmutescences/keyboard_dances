@@ -66,8 +66,7 @@ echo "Running Nixpkgs linuxdeploy with the GTK plugin..."
 PATH="$plugin_dir:$PATH" linuxdeploy --verbosity 3 --appdir "$appdir" --plugin gtk
 
 echo "Fixing missing libraries in AppDir (NixOS workaround)..."
-# linuxdeploy 在 NixOS 上依赖解析不完整，会遗漏一些核心库
-# 这里从 LD_LIBRARY_PATH 中手动补充缺失的 .so
+# 1. 补充 linuxdeploy 遗漏的核心 .so
 libdir="$appdir/usr/lib"
 for lib in \
   libwayland-client.so.0 \
@@ -106,6 +105,43 @@ for lib in \
     fi
   fi
 done
+
+# 2. 补充 PipeWire ALSA 插件（让 ALSA 接口能通过 PipeWire 输出）
+alsa_lib_dir="$libdir/alsa-lib"
+mkdir -p "$alsa_lib_dir"
+# 从 LD_LIBRARY_PATH 中找到 pipewire 的 alsa-lib 目录
+alsa_plugin_src=""
+IFS=: read -ra paths <<< "$LD_LIBRARY_PATH"
+for p in "${paths[@]}"; do
+  candidate="$(dirname "$p")/lib/alsa-lib"
+  if [ -f "$candidate/libasound_module_pcm_pipewire.so" ]; then
+    alsa_plugin_src="$candidate"
+    break
+  fi
+  # 也可能就在 lib 的同级
+  if [ -f "$p/../alsa-lib/libasound_module_pcm_pipewire.so" ]; then
+    alsa_plugin_src="$(realpath "$p/../alsa-lib")"
+    break
+  fi
+done
+if [ -n "$alsa_plugin_src" ]; then
+  echo "  Copying ALSA pipewire plugins from $alsa_plugin_src"
+  for f in "$alsa_plugin_src/"*.so; do
+    cp -L "$f" "$alsa_lib_dir/"
+    echo "  + alsa-lib/$(basename $f)"
+  done
+  # 复制 ALSA pipewire 配置文件
+  alsa_conf_src="$(dirname "$alsa_plugin_src")/../share/alsa/alsa.conf.d"
+  if [ -d "$alsa_conf_src" ]; then
+    mkdir -p "$appdir/usr/share/alsa/alsa.conf.d"
+    for f in "$alsa_conf_src/"*.conf; do
+      cp -L "$f" "$appdir/usr/share/alsa/alsa.conf.d/"
+      echo "  + alsa/$(basename $f)"
+    done
+  fi
+else
+  echo "  ! ALSA pipewire plugin not found in LD_LIBRARY_PATH"
+fi
 # 重新设置 RPATH，确保 AppDir 内的 lib 目录优先
 appdir_lib="\$ORIGIN/../lib"
 for binary in "$appdir/usr/bin/"*; do

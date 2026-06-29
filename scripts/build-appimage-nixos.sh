@@ -65,6 +65,61 @@ ln -s "$gtk_plugin" "$plugin_dir/linuxdeploy-plugin-gtk.sh"
 echo "Running Nixpkgs linuxdeploy with the GTK plugin..."
 PATH="$plugin_dir:$PATH" linuxdeploy --verbosity 3 --appdir "$appdir" --plugin gtk
 
+echo "Fixing missing libraries in AppDir (NixOS workaround)..."
+# linuxdeploy 在 NixOS 上依赖解析不完整，会遗漏一些核心库
+# 这里从 LD_LIBRARY_PATH 中手动补充缺失的 .so
+libdir="$appdir/usr/lib"
+for lib in \
+  libwayland-client.so.0 \
+  libX11.so.6 \
+  libxcb.so.1 \
+  libX11-xcb.so.1 \
+  libasound.so.2 \
+  libfribidi.so.0 \
+  libfontconfig.so.1 \
+  libfreetype.so.6 \
+  libharfbuzz.so.0 \
+  libexpat.so.1 \
+  libz.so.1 \
+  libgpg-error.so.0 \
+  libgbm.so.1 \
+  libdrm.so.2 \
+  libEGL.so.1 \
+  libGLX.so.0 \
+  libstdc++.so.6 \
+; do
+  if [ ! -f "$libdir/$lib" ]; then
+    found=""
+    IFS=: read -ra paths <<< "$LD_LIBRARY_PATH"
+    for p in "${paths[@]}"; do
+      candidate="$p/$lib"
+      if [ -f "$candidate" ] && [ ! -L "$candidate" ]; then
+        found="$candidate"
+        break
+      fi
+    done
+    if [ -n "$found" ]; then
+      cp -L "$found" "$libdir/$lib"
+      echo "  + added $lib"
+    else
+      echo "  ! $lib not found in LD_LIBRARY_PATH"
+    fi
+  fi
+done
+# 重新设置 RPATH，确保 AppDir 内的 lib 目录优先
+appdir_lib="\$ORIGIN/../lib"
+for binary in "$appdir/usr/bin/"*; do
+  if [ -x "$binary" ] && [ ! -d "$binary" ]; then
+    patchelf --set-rpath "$appdir_lib:$ORIGIN" "$binary" 2>/dev/null || true
+  fi
+done
+# 对 usr/lib 下的 .so 也设置 RPATH
+for so in "$libdir/"*.so*; do
+  if [ -f "$so" ] && [ ! -L "$so" ]; then
+    patchelf --set-rpath "$appdir_lib" "$so" 2>/dev/null || true
+  fi
+done
+
 echo "Generating AppImage..."
 APPIMAGE_EXTRACT_AND_RUN=1 "$appimage_plugin" --appdir "$appdir"
 

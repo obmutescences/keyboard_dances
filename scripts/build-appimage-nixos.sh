@@ -65,6 +65,22 @@ ln -s "$gtk_plugin" "$plugin_dir/linuxdeploy-plugin-gtk.sh"
 echo "Running Nixpkgs linuxdeploy with the GTK plugin..."
 PATH="$plugin_dir:$PATH" linuxdeploy --verbosity 3 --appdir "$appdir" --plugin gtk
 
+search_paths=()
+for path_var in LD_LIBRARY_PATH NIX_LD_LIBRARY_PATH; do
+  raw_paths="${!path_var-}"
+  if [ -n "$raw_paths" ]; then
+    IFS=: read -ra paths <<< "$raw_paths"
+    for p in "${paths[@]}"; do
+      [ -n "$p" ] || continue
+      search_paths+=("$p")
+    done
+  fi
+done
+
+if [ -d /run/current-system/sw/lib ]; then
+  search_paths+=("/run/current-system/sw/lib")
+fi
+
 echo "Fixing missing libraries in AppDir (NixOS workaround)..."
 # 1. 补充 linuxdeploy 遗漏的核心 .so
 libdir="$appdir/usr/lib"
@@ -74,6 +90,7 @@ for lib in \
   libxcb.so.1 \
   libX11-xcb.so.1 \
   libasound.so.2 \
+  libpipewire-0.3.so.0 \
   libfribidi.so.0 \
   libfontconfig.so.1 \
   libfreetype.so.6 \
@@ -89,10 +106,9 @@ for lib in \
 ; do
   if [ ! -f "$libdir/$lib" ]; then
     found=""
-    IFS=: read -ra paths <<< "$LD_LIBRARY_PATH"
-    for p in "${paths[@]}"; do
+    for p in "${search_paths[@]}"; do
       candidate="$p/$lib"
-      if [ -f "$candidate" ] && [ ! -L "$candidate" ]; then
+      if [ -e "$candidate" ]; then
         found="$candidate"
         break
       fi
@@ -101,7 +117,7 @@ for lib in \
       cp -L "$found" "$libdir/$lib"
       echo "  + added $lib"
     else
-      echo "  ! $lib not found in LD_LIBRARY_PATH"
+      echo "  ! $lib not found in search paths"
     fi
   fi
 done
@@ -109,20 +125,19 @@ done
 # 2. 补充 PipeWire ALSA 插件（让 ALSA 接口能通过 PipeWire 输出）
 alsa_lib_dir="$libdir/alsa-lib"
 mkdir -p "$alsa_lib_dir"
-# 从 LD_LIBRARY_PATH 中找到 pipewire 的 alsa-lib 目录
+# 从已知库路径中找到 pipewire 的 alsa-lib 目录
 alsa_plugin_src=""
-IFS=: read -ra paths <<< "$LD_LIBRARY_PATH"
-for p in "${paths[@]}"; do
-  candidate="$(dirname "$p")/lib/alsa-lib"
-  if [ -f "$candidate/libasound_module_pcm_pipewire.so" ]; then
-    alsa_plugin_src="$candidate"
-    break
-  fi
-  # 也可能就在 lib 的同级
-  if [ -f "$p/../alsa-lib/libasound_module_pcm_pipewire.so" ]; then
-    alsa_plugin_src="$(realpath "$p/../alsa-lib")"
-    break
-  fi
+for p in "${search_paths[@]}"; do
+  for candidate in \
+    "$p/alsa-lib" \
+    "$(dirname "$p")/lib/alsa-lib" \
+    "$(dirname "$p")/alsa-lib" \
+  ; do
+    if [ -f "$candidate/libasound_module_pcm_pipewire.so" ]; then
+      alsa_plugin_src="$(realpath "$candidate")"
+      break 2
+    fi
+  done
 done
 if [ -n "$alsa_plugin_src" ]; then
   echo "  Copying ALSA pipewire plugins from $alsa_plugin_src"
@@ -140,13 +155,15 @@ if [ -n "$alsa_plugin_src" ]; then
     done
   fi
 else
-  echo "  ! ALSA pipewire plugin not found in LD_LIBRARY_PATH"
+  echo "  ! ALSA pipewire plugin not found in search paths"
 fi
 # 重新设置 RPATH，确保 AppDir 内的 lib 目录优先
-appdir_lib="\$ORIGIN/../lib"
+origin_rpath='$ORIGIN'
+appdir_lib='$ORIGIN/../lib'
+binary_rpath="$appdir_lib:$origin_rpath"
 for binary in "$appdir/usr/bin/"*; do
   if [ -x "$binary" ] && [ ! -d "$binary" ]; then
-    patchelf --set-rpath "$appdir_lib:$ORIGIN" "$binary" 2>/dev/null || true
+    patchelf --set-rpath "$binary_rpath" "$binary" 2>/dev/null || true
   fi
 done
 # 对 usr/lib 下的 .so 也设置 RPATH

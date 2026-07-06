@@ -26,6 +26,7 @@ let
     libxkbcommon
     openssl
     pango
+    pipewire
     fribidi
     systemd
     stdenv.cc.cc.lib

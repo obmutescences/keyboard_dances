@@ -102,6 +102,7 @@ for lib in \
   libdrm.so.2 \
   libEGL.so.1 \
   libGLX.so.0 \
+  libGLdispatch.so.0 \
   libstdc++.so.6 \
 ; do
   if [ ! -f "$libdir/$lib" ]; then
@@ -157,21 +158,79 @@ if [ -n "$alsa_plugin_src" ]; then
 else
   echo "  ! ALSA pipewire plugin not found in search paths"
 fi
-# 重新设置 RPATH，确保 AppDir 内的 lib 目录优先
-origin_rpath='$ORIGIN'
-appdir_lib='$ORIGIN/../lib'
-binary_rpath="$appdir_lib:$origin_rpath"
-for binary in "$appdir/usr/bin/"*; do
-  if [ -x "$binary" ] && [ ! -d "$binary" ]; then
-    patchelf --set-rpath "$binary_rpath" "$binary" 2>/dev/null || true
+
+# WebKitGTK launches helper processes from libexec. linuxdeploy copies its shared
+# libraries but not these executables, leaving its embedded Nix store path behind.
+webkit_libexec_src=""
+webkit_lib_src=""
+for p in "${search_paths[@]}"; do
+  candidate="$(dirname "$p")/libexec/webkit2gtk-4.1"
+  if [ -x "$candidate/WebKitNetworkProcess" ]; then
+    webkit_libexec_src="$candidate"
+    webkit_lib_src="$(dirname "$p")/lib/webkit2gtk-4.1"
+    break
   fi
 done
-# 对 usr/lib 下的 .so 也设置 RPATH
-for so in "$libdir/"*.so*; do
-  if [ -f "$so" ] && [ ! -L "$so" ]; then
-    patchelf --set-rpath "$appdir_lib" "$so" 2>/dev/null || true
-  fi
+
+if [ -z "$webkit_libexec_src" ]; then
+  echo "  ! WebKitGTK helper processes not found in search paths" >&2
+  exit 1
+fi
+
+webkit_exec_dir="$appdir/usr/libexec/webkit2gtk-4.1"
+mkdir -p "$webkit_exec_dir"
+for process in WebKitGPUProcess WebKitNetworkProcess WebKitWebProcess; do
+  cp -L "$webkit_libexec_src/$process" "$webkit_exec_dir/$process"
+  chmod +x "$webkit_exec_dir/$process"
+  echo "  + libexec/webkit2gtk-4.1/$process"
 done
+
+# Keep the WebKit injected bundle beside the copied helpers as well.
+if [ -d "$webkit_lib_src/injected-bundle" ]; then
+  mkdir -p "$libdir/webkit2gtk-4.1/injected-bundle"
+  cp -LR "$webkit_lib_src/injected-bundle/." "$libdir/webkit2gtk-4.1/injected-bundle/"
+  echo "  + WebKit injected bundle"
+fi
+
+# Recursively bundle the helper-process dependency closure and rewrite its RPATH.
+linuxdeploy --verbosity 3 --appdir "$appdir" --deploy-deps-only "$webkit_exec_dir"
+
+# Nix store files retain read-only modes when copied by linuxdeploy. Make the
+# AppDir writable before its ELF metadata is normalized below.
+chmod -R u+w "$appdir/usr"
+
+# The generated AppRun must override WebKit's compile-time Nix store libexec
+# location so the package survives system updates and garbage collection.
+cat > "$appdir/AppRun" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+this_dir="$(readlink -f "$(dirname "$0")")"
+
+source "$this_dir/apprun-hooks/linuxdeploy-plugin-gtk.sh"
+
+export WEBKIT_EXEC_PATH="$this_dir/usr/libexec/webkit2gtk-4.1"
+export WEBKIT_INJECTED_BUNDLE_PATH="$this_dir/usr/lib/webkit2gtk-4.1/injected-bundle"
+export LD_LIBRARY_PATH="$this_dir/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+exec "$this_dir/AppRun.wrapped" "$@"
+EOF
+chmod +x "$appdir/AppRun"
+
+# Rewrite every bundled ELF after all copying is complete. This removes Nix store
+# RUNPATHs from recursively deployed WebKit dependencies as well as the main app.
+while IFS= read -r -d '' elf; do
+  if patchelf --print-needed "$elf" >/dev/null 2>&1; then
+    elf_dir="$(dirname "$elf")"
+    relative_libdir="$(realpath --relative-to="$elf_dir" "$libdir")"
+    if [ "$relative_libdir" = "." ]; then
+      elf_rpath='$ORIGIN'
+    else
+      elf_rpath="\$ORIGIN/$relative_libdir"
+    fi
+    patchelf --set-rpath "$elf_rpath" "$elf"
+  fi
+done < <(find "$appdir/usr" -type f -print0)
 
 echo "Generating AppImage..."
 APPIMAGE_EXTRACT_AND_RUN=1 "$appimage_plugin" --appdir "$appdir"

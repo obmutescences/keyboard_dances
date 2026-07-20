@@ -199,17 +199,41 @@ linuxdeploy --verbosity 3 --appdir "$appdir" --deploy-deps-only "$webkit_exec_di
 # AppDir writable before its ELF metadata is normalized below.
 chmod -R u+w "$appdir/usr"
 
-# The generated AppRun must override WebKit's compile-time Nix store libexec
-# location so the package survives system updates and garbage collection.
+# WebKitGTK 2.52 embeds its libexec directory in libwebkit2gtk. The
+# WEBKIT_EXEC_PATH variable is not read by this version, so rewrite that path
+# in-place to a procfs path resolved from the AppImage working directory. Keeping
+# the replacement the same size preserves the ELF layout and avoids corrupting
+# offsets in the binary.
+#
+# AppRun.wrapped enters the AppImage's usr directory before executing the main
+# binary, so /proc/self/cwd/libexec reaches the bundled helpers regardless of
+# the caller's original working directory.
+webkit_exec_relative="/proc/self/cwd/libexec/webkit2gtk-4.1"
+webkit_patch_count=0
+while IFS= read -r -d '' webkit_so; do
+  if perl -0777 -ne 'if (m{/nix/store/[^/\0]*-webkitgtk-[^/\0]*/libexec/webkit2gtk-4\.1}) { $found = 1 } END { exit($found ? 0 : 1) }' "$webkit_so"; then
+    WEBKIT_EXEC_RELATIVE="$webkit_exec_relative" perl -0777 -pi -e 'my $replacement = $ENV{WEBKIT_EXEC_RELATIVE}; s{(/nix/store/[^/\0]*-webkitgtk-[^/\0]*/libexec/webkit2gtk-4\.1)}{my $old = $1; die "WebKit path replacement is longer than the original" if length($replacement) > length($old); $replacement . "\0" x (length($old) - length($replacement))}gex' "$webkit_so"
+    webkit_patch_count=$((webkit_patch_count + 1))
+    echo "  + made WebKitGTK libexec path relocatable in $(basename "$webkit_so")"
+  fi
+done < <(find "$libdir" -type f -name 'libwebkit2gtk-4.1.so*' -print0)
+
+if [ "$webkit_patch_count" -eq 0 ]; then
+  echo "  ! WebKitGTK main library with embedded libexec path was not found" >&2
+  exit 1
+fi
+
+# Keep the AppImage root as the working directory for resources; helper lookup
+# uses /proc/self/cwd after AppRun.wrapped enters the AppImage's usr directory.
 cat > "$appdir/AppRun" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
 this_dir="$(readlink -f "$(dirname "$0")")"
+cd "$this_dir"
 
 source "$this_dir/apprun-hooks/linuxdeploy-plugin-gtk.sh"
 
-export WEBKIT_EXEC_PATH="$this_dir/usr/libexec/webkit2gtk-4.1"
 export WEBKIT_INJECTED_BUNDLE_PATH="$this_dir/usr/lib/webkit2gtk-4.1/injected-bundle"
 export LD_LIBRARY_PATH="$this_dir/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 

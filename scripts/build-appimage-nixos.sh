@@ -123,7 +123,28 @@ for lib in \
   fi
 done
 
-# 2. 补充 PipeWire ALSA 插件（让 ALSA 接口能通过 PipeWire 输出）
+# 2. Bundle ALSA's complete configuration tree. libasound embeds its Nix store
+# data directory at build time, so config files must be made relocatable too.
+alsa_config_src=""
+for p in "${search_paths[@]}"; do
+  candidate="$(dirname "$p")/share/alsa"
+  if [ -f "$candidate/alsa.conf" ]; then
+    alsa_config_src="$(realpath "$candidate")"
+    break
+  fi
+done
+
+if [ -z "$alsa_config_src" ]; then
+  echo "  ! ALSA configuration tree not found in search paths" >&2
+  exit 1
+fi
+
+alsa_config_dir="$appdir/usr/share/alsa"
+mkdir -p "$alsa_config_dir"
+cp -LR "$alsa_config_src/." "$alsa_config_dir/"
+echo "  + ALSA configuration tree"
+
+# 3. 补充 PipeWire ALSA 插件（让 ALSA 接口能通过 PipeWire 输出）
 alsa_lib_dir="$libdir/alsa-lib"
 mkdir -p "$alsa_lib_dir"
 # 从已知库路径中找到 pipewire 的 alsa-lib 目录
@@ -149,9 +170,9 @@ if [ -n "$alsa_plugin_src" ]; then
   # 复制 ALSA pipewire 配置文件
   alsa_conf_src="$(dirname "$alsa_plugin_src")/../share/alsa/alsa.conf.d"
   if [ -d "$alsa_conf_src" ]; then
-    mkdir -p "$appdir/usr/share/alsa/alsa.conf.d"
+    mkdir -p "$alsa_config_dir/alsa.conf.d"
     for f in "$alsa_conf_src/"*.conf; do
-      cp -L "$f" "$appdir/usr/share/alsa/alsa.conf.d/"
+      cp -L "$f" "$alsa_config_dir/alsa.conf.d/"
       echo "  + alsa/$(basename $f)"
     done
   fi
@@ -234,6 +255,9 @@ cd "$this_dir"
 
 source "$this_dir/apprun-hooks/linuxdeploy-plugin-gtk.sh"
 
+export ALSA_CONFIG_DIR="$this_dir/usr/share/alsa"
+export ALSA_CONFIG_PATH="$ALSA_CONFIG_DIR/alsa.conf"
+export ALSA_PLUGIN_DIR="$this_dir/usr/lib/alsa-lib"
 export WEBKIT_INJECTED_BUNDLE_PATH="$this_dir/usr/lib/webkit2gtk-4.1/injected-bundle"
 export LD_LIBRARY_PATH="$this_dir/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 

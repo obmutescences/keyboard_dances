@@ -100,11 +100,15 @@ Config files are written to:
 ~/.config/keyboard-dances/profiles/*.toml
 ```
 
-Default sample sounds are written to:
+Default and imported profile sounds are managed under the config directory:
 
 ```text
-~/.local/share/keyboard-dances/sounds/
+~/.config/keyboard-dances/sounds/
 ```
+
+When a profile is saved, the selected audio files are copied into this directory
+as `<profile>-press.<ext>` and `<profile>-release.<ext>`. The profile stores these
+managed paths instead of the original file locations.
 
 ## Linux Input And Wayland Permissions
 

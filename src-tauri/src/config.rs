@@ -3,6 +3,7 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const APP_QUALIFIER: &str = "dev";
 const APP_ORGANIZATION: &str = "keyboard-dances";
@@ -10,6 +11,35 @@ const APP_NAME: &str = "keyboard-dances";
 const DEFAULT_PROFILE_NAME: &str = "default";
 const DEFAULT_PRESS_SOUND: &[u8] = include_bytes!("../../ff-0.wav");
 const DEFAULT_RELEASE_SOUND: &[u8] = include_bytes!("../../ff-1.wav");
+static SOUND_IMPORT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+struct StagedSound {
+    destination: PathBuf,
+    staged_path: Option<PathBuf>,
+}
+
+impl StagedSound {
+    fn commit(mut self) -> Result<PathBuf> {
+        if let Some(staged_path) = &self.staged_path {
+            fs::rename(staged_path, &self.destination).with_context(|| {
+                format!(
+                    "Failed to move imported sound to {}",
+                    self.destination.display()
+                )
+            })?;
+        }
+        self.staged_path = None;
+        Ok(self.destination.clone())
+    }
+}
+
+impl Drop for StagedSound {
+    fn drop(&mut self) {
+        if let Some(staged_path) = &self.staged_path {
+            let _ = fs::remove_file(staged_path);
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -139,8 +169,19 @@ impl ConfigStore {
     pub fn save_profile(&self, profile: &ProfileConfig) -> Result<String> {
         let name = normalized_profile_name(&profile.name);
         anyhow::ensure!(!name.is_empty(), "Profile name cannot be empty");
+
+        fs::create_dir_all(self.sounds_dir())
+            .with_context(|| format!("Failed to create {}", self.sounds_dir().display()))?;
+
+        // Stage both sources before replacing either managed file so swapping
+        // press and release sounds cannot overwrite the second source.
+        let press_sound = self.stage_sound(&name, "press", &profile.press_sound)?;
+        let release_sound = self.stage_sound(&name, "release", &profile.release_sound)?;
+
         let mut profile = profile.clone();
         profile.name = name;
+        profile.press_sound = press_sound.commit()?;
+        profile.release_sound = release_sound.commit()?;
         let path = self.profile_path(&profile.name);
         let text = toml::to_string_pretty(&profile).context("Failed to serialize profile")?;
         fs::write(&path, text).with_context(|| format!("Failed to write {}", path.display()))?;
@@ -212,7 +253,54 @@ impl ConfigStore {
     }
 
     fn sounds_dir(&self) -> PathBuf {
-        self.data_dir.join("sounds")
+        self.config_dir.join("sounds")
+    }
+
+    fn stage_sound(&self, profile_name: &str, role: &str, source: &Path) -> Result<StagedSound> {
+        anyhow::ensure!(
+            source.is_file(),
+            "{} sound file does not exist: {}",
+            capitalize(role),
+            source.display()
+        );
+
+        let extension = source
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_ascii_lowercase)
+            .with_context(|| format!("Audio file has no valid extension: {}", source.display()))?;
+        anyhow::ensure!(
+            matches!(extension.as_str(), "wav" | "ogg"),
+            "Unsupported audio format .{extension}; choose a WAV or OGG file"
+        );
+
+        let destination = self
+            .sounds_dir()
+            .join(format!("{profile_name}-{role}.{extension}"));
+        if paths_refer_to_same_file(source, &destination)? {
+            return Ok(StagedSound {
+                destination,
+                staged_path: None,
+            });
+        }
+
+        let sequence = SOUND_IMPORT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let file_name = destination
+            .file_name()
+            .and_then(|name| name.to_str())
+            .context("Managed sound file name is not valid UTF-8")?;
+        let staged_path = self.sounds_dir().join(format!(
+            ".{file_name}.{}.{}.tmp",
+            std::process::id(),
+            sequence
+        ));
+        fs::copy(source, &staged_path)
+            .with_context(|| format!("Failed to copy {} sound from {}", role, source.display()))?;
+
+        Ok(StagedSound {
+            destination,
+            staged_path: Some(staged_path),
+        })
     }
 
     fn ensure_sample_sound(&self, file_name: &str, bytes: &[u8]) -> Result<()> {
@@ -221,6 +309,29 @@ impl ConfigStore {
             return Ok(());
         }
         fs::write(&path, bytes).with_context(|| format!("Failed to write {}", path.display()))
+    }
+}
+
+fn paths_refer_to_same_file(source: &Path, destination: &Path) -> Result<bool> {
+    if source == destination {
+        return Ok(true);
+    }
+    if !destination.exists() {
+        return Ok(false);
+    }
+
+    let source = fs::canonicalize(source)
+        .with_context(|| format!("Failed to resolve {}", source.display()))?;
+    let destination = fs::canonicalize(destination)
+        .with_context(|| format!("Failed to resolve {}", destination.display()))?;
+    Ok(source == destination)
+}
+
+fn capitalize(value: &str) -> String {
+    let mut characters = value.chars();
+    match characters.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + characters.as_str(),
+        None => String::new(),
     }
 }
 
@@ -235,4 +346,131 @@ pub(crate) fn normalized_profile_name(name: &str) -> String {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestStore {
+        root: PathBuf,
+        store: ConfigStore,
+    }
+
+    impl TestStore {
+        fn new() -> Self {
+            let sequence = SOUND_IMPORT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "keyboard-dances-config-test-{}-{}",
+                std::process::id(),
+                sequence
+            ));
+            let config_dir = root.join("config");
+            let data_dir = root.join("data");
+            let profiles_dir = config_dir.join("profiles");
+            fs::create_dir_all(&profiles_dir).expect("test profile directory should be created");
+
+            let store = ConfigStore {
+                app_config_path: config_dir.join("app.toml"),
+                config_dir,
+                data_dir,
+                profiles_dir,
+            };
+            Self { root, store }
+        }
+
+        fn source(&self, file_name: &str, bytes: &[u8]) -> PathBuf {
+            let directory = self.root.join("imports");
+            fs::create_dir_all(&directory).expect("test import directory should be created");
+            let path = directory.join(file_name);
+            fs::write(&path, bytes).expect("test sound should be written");
+            path
+        }
+    }
+
+    impl Drop for TestStore {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn save_profile_imports_audio_into_config_sounds_directory() {
+        let fixture = TestStore::new();
+        let press_source = fixture.source("mechanical.WAV", b"press-audio");
+        let release_source = fixture.source("mechanical.ogg", b"release-audio");
+
+        let saved_name = fixture
+            .store
+            .save_profile(&ProfileConfig {
+                name: "Desk Mode".to_string(),
+                press_sound: press_source,
+                release_sound: release_source,
+            })
+            .expect("profile should be saved");
+
+        assert_eq!(saved_name, "Desk_Mode");
+        let profile = fixture
+            .store
+            .load_profile(&saved_name)
+            .expect("saved profile should load");
+        assert_eq!(
+            profile.press_sound,
+            fixture.store.config_dir.join("sounds/Desk_Mode-press.wav")
+        );
+        assert_eq!(
+            profile.release_sound,
+            fixture
+                .store
+                .config_dir
+                .join("sounds/Desk_Mode-release.ogg")
+        );
+        assert_eq!(
+            fs::read(profile.press_sound).expect("managed press sound should be readable"),
+            b"press-audio"
+        );
+        assert_eq!(
+            fs::read(profile.release_sound).expect("managed release sound should be readable"),
+            b"release-audio"
+        );
+    }
+
+    #[test]
+    fn save_profile_can_resave_and_swap_managed_sounds() {
+        let fixture = TestStore::new();
+        let profile_name = fixture
+            .store
+            .save_profile(&ProfileConfig {
+                name: "swap".to_string(),
+                press_sound: fixture.source("press.wav", b"press-audio"),
+                release_sound: fixture.source("release.wav", b"release-audio"),
+            })
+            .expect("initial profile should be saved");
+        let profile = fixture
+            .store
+            .load_profile(&profile_name)
+            .expect("initial profile should load");
+
+        fixture
+            .store
+            .save_profile(&profile)
+            .expect("managed paths should be reusable");
+        fixture
+            .store
+            .save_profile(&ProfileConfig {
+                name: profile.name,
+                press_sound: profile.release_sound.clone(),
+                release_sound: profile.press_sound.clone(),
+            })
+            .expect("managed sounds should be swappable");
+
+        assert_eq!(
+            fs::read(profile.press_sound).expect("swapped press sound should be readable"),
+            b"release-audio"
+        );
+        assert_eq!(
+            fs::read(profile.release_sound).expect("swapped release sound should be readable"),
+            b"press-audio"
+        );
+    }
 }

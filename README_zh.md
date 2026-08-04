@@ -83,11 +83,15 @@ cargo run --manifest-path src-tauri/Cargo.toml
 ~/.config/keyboard-dances/profiles/*.toml
 ```
 
-默认示例声音默认写入：
+默认示例声音和配置导入的音频统一存放于配置目录：
 
 ```text
-~/.local/share/keyboard-dances/sounds/
+~/.config/keyboard-dances/sounds/
 ```
+
+保存配置时，选择的音频文件会复制到此目录，并命名为
+`<配置名>-press.<扩展名>` 和 `<配置名>-release.<扩展名>`。配置文件保存的是托管副本路径，
+不再依赖原始音频文件位置。
 
 ## Linux 输入和 Wayland 权限
 

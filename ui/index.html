@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,121 +7,344 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <aside class="profile-panel">
-        <div class="brand">
-          <span class="brand-mark"></span>
-          <div>
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="icon-audio-lines" viewBox="0 0 24 24">
+        <path d="M2 10v3" />
+        <path d="M6 6v11" />
+        <path d="M10 3v18" />
+        <path d="M14 8v7" />
+        <path d="M18 5v13" />
+        <path d="M22 10v3" />
+      </symbol>
+      <symbol id="icon-alert" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 8v4" />
+        <path d="M12 16h.01" />
+      </symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24">
+        <path d="m5 12 4 4L19 6" />
+      </symbol>
+      <symbol id="icon-chevron-right" viewBox="0 0 24 24">
+        <path d="m9 18 6-6-6-6" />
+      </symbol>
+      <symbol id="icon-copy-plus" viewBox="0 0 24 24">
+        <path d="M15 12h6" />
+        <path d="M18 9v6" />
+        <rect width="14" height="14" x="3" y="3" rx="2" />
+        <path d="M5 21h10a2 2 0 0 0 2-2v-2" />
+      </symbol>
+      <symbol id="icon-folder-open" viewBox="0 0 24 24">
+        <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6A2 2 0 0 1 18.46 20H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
+      </symbol>
+      <symbol id="icon-keyboard" viewBox="0 0 24 24">
+        <path d="M10 8h.01" />
+        <path d="M14 8h.01" />
+        <path d="M18 8h.01" />
+        <path d="M6 8h.01" />
+        <path d="M8 12h.01" />
+        <path d="M12 12h.01" />
+        <path d="M16 12h.01" />
+        <path d="M7 16h10" />
+        <rect width="20" height="16" x="2" y="4" rx="2" />
+      </symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24">
+        <path d="m6 3 14 9-14 9z" />
+      </symbol>
+      <symbol id="icon-power" viewBox="0 0 24 24">
+        <path d="M12 2v10" />
+        <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+      </symbol>
+      <symbol id="icon-save" viewBox="0 0 24 24">
+        <path d="M15.2 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.8z" />
+        <path d="M17 21v-8H7v8" />
+        <path d="M7 3v5h8" />
+      </symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24">
+        <path d="M3 6h18" />
+        <path d="M8 6V4h8v2" />
+        <path d="M19 6l-1 14H6L5 6" />
+        <path d="M10 11v5" />
+        <path d="M14 11v5" />
+      </symbol>
+    </svg>
+
+    <div class="ambient-grid" aria-hidden="true">
+      <span class="scan-beam"></span>
+      <span class="corner-code">KD // 01</span>
+    </div>
+
+    <main class="app-frame">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">
+            <svg class="icon"><use href="#icon-keyboard"></use></svg>
+            <span></span>
+          </div>
+          <div class="brand-copy">
             <h1>Keyboard Dances</h1>
-            <p id="config-dir"></p>
+            <p>KEY SOUND CONSOLE</p>
           </div>
         </div>
 
-        <div class="status-row">
-          <button id="toggle-enabled" class="toggle-button" type="button"></button>
-          <button id="next-profile" class="icon-button" type="button" title="Next profile">Next</button>
+        <div class="engine-controls">
+          <div class="engine-readout" aria-live="polite">
+            <span class="engine-pulse" aria-hidden="true"></span>
+            <div>
+              <span>ENGINE</span>
+              <strong id="engine-state">连接中</strong>
+            </div>
+          </div>
+          <button
+            id="toggle-enabled"
+            class="engine-toggle"
+            type="button"
+            role="switch"
+            aria-checked="false"
+            title="启用或暂停键盘音效"
+          >
+            <svg class="icon" aria-hidden="true"><use href="#icon-power"></use></svg>
+            <span id="toggle-label">连接中</span>
+            <span class="toggle-track" aria-hidden="true"><span></span></span>
+          </button>
         </div>
+      </header>
 
-        <nav id="profile-list" class="profile-list"></nav>
-      </aside>
-
-      <section class="editor-panel">
-        <header>
-          <div>
-            <p class="eyebrow">Active sound profile</p>
-            <h2 id="active-title">Loading</h2>
+      <div class="app-body">
+        <aside class="profile-panel">
+          <div class="sidebar-heading">
+            <div>
+              <p class="section-code">PROFILE BANK</p>
+              <h2>声音配置</h2>
+            </div>
+            <span id="profile-count" class="profile-count">0</span>
           </div>
-          <div class="actions">
-            <button id="test-press" class="neon-action" type="button">Test Press</button>
-            <button id="test-release" class="neon-action" type="button">Test Release</button>
-            <button id="save-profile" class="primary" type="button">Save</button>
-          </div>
-        </header>
 
-        <div class="workspace-grid">
+          <nav id="profile-list" class="profile-list" aria-label="声音配置列表"></nav>
+
+          <div class="sidebar-footer">
+            <button id="next-profile" class="next-profile" type="button">
+              <span>下一个配置</span>
+              <svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"></use></svg>
+            </button>
+            <div class="path-readout">
+              <svg class="icon" aria-hidden="true"><use href="#icon-folder-open"></use></svg>
+              <div>
+                <span>CONFIG ROOT</span>
+                <p id="config-dir" title=""></p>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <section class="editor-panel">
+          <header class="editor-header">
+            <div class="title-stack">
+              <div class="title-meta">
+                <p class="section-code"><span class="active-dot"></span>ACTIVE PROFILE</p>
+                <span id="dirty-indicator" class="dirty-indicator" hidden>未保存</span>
+              </div>
+              <h2 id="active-title">载入中</h2>
+            </div>
+            <button id="save-profile" class="primary-action" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+              <span id="save-label">保存配置</span>
+            </button>
+          </header>
+
           <form id="profile-form" class="profile-form">
-            <label>
-              <span>Profile name</span>
-              <input id="profile-name" name="name" autocomplete="off" />
-            </label>
-
-            <label>
-              <span>Press sound</span>
-              <div class="path-input">
-                <input id="press-sound" name="press_sound" autocomplete="off" />
-                <button data-pick="press-sound" type="button">Browse</button>
-              </div>
-            </label>
-
-            <label>
-              <span>Release sound</span>
-              <div class="path-input">
-                <input id="release-sound" name="release_sound" autocomplete="off" />
-                <button data-pick="release-sound" type="button">Browse</button>
-              </div>
-            </label>
-
-            <section class="wave-panel" aria-label="Audio waveform">
-              <div class="wave-meta">
-                <span>Audio Waveform</span>
-                <span>CSS Signal</span>
-              </div>
-              <div class="waveform" aria-hidden="true">
-                <span style="--h: 28%; --d: 0ms"></span>
-                <span style="--h: 62%; --d: 80ms"></span>
-                <span style="--h: 42%; --d: 160ms"></span>
-                <span style="--h: 78%; --d: 240ms"></span>
-                <span style="--h: 36%; --d: 320ms"></span>
-                <span style="--h: 88%; --d: 400ms"></span>
-                <span style="--h: 52%; --d: 480ms"></span>
-                <span style="--h: 70%; --d: 560ms"></span>
-                <span style="--h: 34%; --d: 640ms"></span>
-                <span style="--h: 82%; --d: 720ms"></span>
-                <span style="--h: 48%; --d: 800ms"></span>
-                <span style="--h: 74%; --d: 880ms"></span>
-                <span style="--h: 30%; --d: 960ms"></span>
-                <span style="--h: 58%; --d: 1040ms"></span>
-                <span style="--h: 40%; --d: 1120ms"></span>
-                <span style="--h: 76%; --d: 1200ms"></span>
-              </div>
-            </section>
-
-          </form>
-
-          <aside class="utility-panel">
-            <section class="create-panel">
-              <label>
-                <span>Duplicate as</span>
-                <div class="path-input">
-                  <input id="duplicate-name" autocomplete="off" placeholder="new-profile-name" />
-                  <button id="duplicate-profile" type="button">Create</button>
+            <section class="identity-strip">
+              <label class="field-group" for="profile-name">
+                <span>配置名称</span>
+                <input id="profile-name" name="name" autocomplete="off" />
+              </label>
+              <div class="vault-location">
+                <svg class="icon" aria-hidden="true"><use href="#icon-folder-open"></use></svg>
+                <div>
+                  <span>AUDIO VAULT</span>
+                  <p id="managed-audio-dir" title=""></p>
                 </div>
-              </label>
+              </div>
             </section>
 
-            <section class="delete-panel">
-              <label>
-                <span>Profile control</span>
-                <button id="delete-profile" class="danger" type="button">Delete Profile</button>
-              </label>
-            </section>
-          </aside>
-        </div>
+            <div class="sound-grid">
+              <section id="press-channel" class="sound-channel press-channel">
+                <header class="channel-header">
+                  <div class="channel-title">
+                    <span class="channel-index">01</span>
+                    <div>
+                      <span>KEY DOWN</span>
+                      <h3>按下音效</h3>
+                    </div>
+                  </div>
+                  <span id="press-format" class="format-badge">WAV</span>
+                </header>
 
-        <p id="message" class="message"></p>
-      </section>
+                <div class="signal-scope" aria-hidden="true">
+                  <span style="--level: 32%; --delay: 0ms"></span>
+                  <span style="--level: 68%; --delay: 45ms"></span>
+                  <span style="--level: 44%; --delay: 90ms"></span>
+                  <span style="--level: 82%; --delay: 135ms"></span>
+                  <span style="--level: 54%; --delay: 180ms"></span>
+                  <span style="--level: 92%; --delay: 225ms"></span>
+                  <span style="--level: 38%; --delay: 270ms"></span>
+                  <span style="--level: 72%; --delay: 315ms"></span>
+                  <span style="--level: 48%; --delay: 360ms"></span>
+                  <span style="--level: 86%; --delay: 405ms"></span>
+                  <span style="--level: 58%; --delay: 450ms"></span>
+                  <span style="--level: 34%; --delay: 495ms"></span>
+                </div>
+
+                <div class="selected-file">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-audio-lines"></use></svg>
+                  <div>
+                    <span>SELECTED FILE</span>
+                    <strong id="press-file-name">等待选择</strong>
+                  </div>
+                </div>
+
+                <div class="file-control">
+                  <input
+                    id="press-sound"
+                    name="press_sound"
+                    aria-label="按下音效文件路径"
+                    readonly
+                  />
+                  <button
+                    class="icon-button"
+                    data-pick="press-sound"
+                    type="button"
+                    title="选择按下音效"
+                    aria-label="选择按下音效"
+                  >
+                    <svg class="icon" aria-hidden="true"><use href="#icon-folder-open"></use></svg>
+                  </button>
+                </div>
+
+                <button id="test-press" class="audition-button" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-play"></use></svg>
+                  <span>试听按下</span>
+                  <span class="button-meter" aria-hidden="true"></span>
+                </button>
+              </section>
+
+              <section id="release-channel" class="sound-channel release-channel">
+                <header class="channel-header">
+                  <div class="channel-title">
+                    <span class="channel-index">02</span>
+                    <div>
+                      <span>KEY UP</span>
+                      <h3>释放音效</h3>
+                    </div>
+                  </div>
+                  <span id="release-format" class="format-badge">WAV</span>
+                </header>
+
+                <div class="signal-scope" aria-hidden="true">
+                  <span style="--level: 62%; --delay: 0ms"></span>
+                  <span style="--level: 38%; --delay: 45ms"></span>
+                  <span style="--level: 78%; --delay: 90ms"></span>
+                  <span style="--level: 48%; --delay: 135ms"></span>
+                  <span style="--level: 88%; --delay: 180ms"></span>
+                  <span style="--level: 58%; --delay: 225ms"></span>
+                  <span style="--level: 34%; --delay: 270ms"></span>
+                  <span style="--level: 82%; --delay: 315ms"></span>
+                  <span style="--level: 44%; --delay: 360ms"></span>
+                  <span style="--level: 70%; --delay: 405ms"></span>
+                  <span style="--level: 52%; --delay: 450ms"></span>
+                  <span style="--level: 30%; --delay: 495ms"></span>
+                </div>
+
+                <div class="selected-file">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-audio-lines"></use></svg>
+                  <div>
+                    <span>SELECTED FILE</span>
+                    <strong id="release-file-name">等待选择</strong>
+                  </div>
+                </div>
+
+                <div class="file-control">
+                  <input
+                    id="release-sound"
+                    name="release_sound"
+                    aria-label="释放音效文件路径"
+                    readonly
+                  />
+                  <button
+                    class="icon-button"
+                    data-pick="release-sound"
+                    type="button"
+                    title="选择释放音效"
+                    aria-label="选择释放音效"
+                  >
+                    <svg class="icon" aria-hidden="true"><use href="#icon-folder-open"></use></svg>
+                  </button>
+                </div>
+
+                <button id="test-release" class="audition-button" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-play"></use></svg>
+                  <span>试听释放</span>
+                  <span class="button-meter" aria-hidden="true"></span>
+                </button>
+              </section>
+            </div>
+
+            <section class="profile-utilities">
+              <div class="utility-heading">
+                <p class="section-code">PROFILE ACTIONS</p>
+                <h3>配置操作</h3>
+              </div>
+              <div class="duplicate-control">
+                <label for="duplicate-name">复制为新配置</label>
+                <span class="inline-control">
+                  <input
+                    id="duplicate-name"
+                    autocomplete="off"
+                    placeholder="输入新配置名称"
+                  />
+                  <button id="duplicate-profile" type="button">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-copy-plus"></use></svg>
+                    <span>创建</span>
+                  </button>
+                </span>
+              </div>
+              <button id="delete-profile" class="danger-action" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#icon-trash"></use></svg>
+                <span>删除当前配置</span>
+              </button>
+            </section>
+          </form>
+        </section>
+      </div>
     </main>
 
+    <div id="message" class="toast" role="status" aria-live="polite" aria-atomic="true">
+      <span class="toast-mark" aria-hidden="true">
+        <svg class="icon"><use id="message-icon" href="#icon-check"></use></svg>
+      </span>
+      <p id="message-text"></p>
+    </div>
+
     <div id="confirm-modal" class="modal-backdrop" hidden>
-      <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <section
+        class="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+      >
+        <div class="dialog-mark" aria-hidden="true">
+          <svg class="icon"><use href="#icon-trash"></use></svg>
+        </div>
         <div>
-          <p class="eyebrow">Confirm action</p>
-          <h2 id="confirm-title">Delete profile?</h2>
+          <p class="section-code">CONFIRM ACTION</p>
+          <h2 id="confirm-title">删除配置？</h2>
         </div>
         <p id="confirm-body" class="confirm-body"></p>
         <div class="dialog-actions">
-          <button id="confirm-cancel" type="button">Cancel</button>
-          <button id="confirm-delete" class="danger" type="button">Delete</button>
+          <button id="confirm-cancel" type="button">取消</button>
+          <button id="confirm-delete" class="danger-action" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#icon-trash"></use></svg>
+            <span>删除</span>
+          </button>
         </div>
       </section>
     </div>
